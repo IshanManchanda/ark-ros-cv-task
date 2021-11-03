@@ -117,55 +117,62 @@ def get_corner_info(file_id):
 
     # Read in image
     img = read_image(file_id)
-    corner_coords = get_potential_corners(img)
+    corner_candidates = get_potential_corners(img)
 
-    # TODO: Refactor and optimize this function
-    # Make a set of votes colors
+    # Set of all colors in this image, used later for deducing occluded colors
     all_colors = set()
+    # List of detected colors for each corner
     colors_list = []
-    ids = []
-    p_candidates = {}
+    # Detected useful corners with potentially missing information
+    raw_corners = {}
 
-    for k, corner in enumerate(corner_coords):
+    for i, corner in enumerate(corner_candidates):
+        # Get detected colors for this corner
         colors = get_corner_colors(img, corner)
 
-        # Add color to the common set for this image
+        # Add detected colors to the common set for this image
         all_colors |= colors
+        # Store value in list for later finalization
         colors_list.append(colors)
 
-        # Not a corner if detected colors 0 or 1, continue
+        # Not a useful corner if detected colors are 0 or 1, skip
         if len(colors) < 2:
             continue
 
-        ids.append(k)
+        # Generate dictionary key as a string of sorted color indices
         key = ''.join(str(x) for x in sorted(colors))
-        # p_candidates[key] = p_candidates.get(key, 0) + 1
-        p_candidates[key] = k
+        # Store index of corner corresponding to this color combination
+        raw_corners[key] = i
 
-    print(all_colors)
-    candidates = {}
-    for key, val in p_candidates.items():
+    # Finalize the candidates by deducing the third face color for corners
+    corners = {}
+    # Iterate over all raw corners
+    for key, val in raw_corners.items():
+        # Determine if we do have information about 2 faces or 3
         missing = all_colors - colors_list[val]
+
+        # If we know the color of all 3 faces, save directly and continue
         if not missing:
-            candidates[key] = corner_coords[val]
+            corners[key] = corner_candidates[val]
             continue
 
+        # Otherwise deduce the occluded face color from its opposite
         missing = opposites[missing.pop()]
         colors_list[val].add(missing)
+        # Recompute key and store corner information
         key = ''.join(str(x) for x in sorted(colors_list[val]))
-        # print(missing, key)
-        candidates[key] = corner_coords[val]
-    print(p_candidates)
-    print(candidates)
-    return candidates
+        corners[key] = corner_candidates[val]
+
+    return corners
 
 
 def handle_corner_info(req):
+    # Perform the corner coordinate + color computation for this file
     corner_info = get_corner_info(req.file_id)
-    response = CornerInfoResponse()
 
+    # Make ROS service response
+    response = CornerInfoResponse()
     for key, val in corner_info.items():
-        print(key, val)
         corner = Corner(key, val)
         response.corners += [corner]
 
@@ -176,14 +183,14 @@ def handle_corner_info(req):
 def corner_info_server():
     rospy.init_node('corner_info_server')
     s = rospy.Service('corner_info', CornerInfo, handle_corner_info)
-    print("Ready to add two ints.")
+    print("Corner Info Server serving")
     rospy.spin()
 
 
 if __name__ == "__main__":
-    class Temp:
-        pass
-    req = Temp()
-    req.file_id = 0
-    handle_corner_info(req)
-    # corner_info_server()
+    # class Temp:
+    #     pass
+    # req = Temp()
+    # req.file_id = 0
+    # handle_corner_info(req)
+    corner_info_server()
