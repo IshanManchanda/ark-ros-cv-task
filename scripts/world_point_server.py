@@ -100,6 +100,13 @@ def get_intrinsics_matrix():
 
 
 def main():
+    # TODO: Receive request from client with file_id and list of corners
+    # TODO: Return camera position in world frame
+    # TODO: Return world-frame positions of the given corners
+    #       by pumping through inv intrinsics and then inv extrinsics
+    # FIXME: Do everything here quick, refactoring much easier
+    #        than ahead-of-time planning since you have code in front of you.
+    #        Makes it much easier to determine logical breaks for funcs.
     for i in range(10):
         print(f"\n--- File {i} ---")
         ext = get_extrinsics_matrix(i)
