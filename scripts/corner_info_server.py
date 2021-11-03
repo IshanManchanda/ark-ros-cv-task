@@ -1,64 +1,49 @@
 #!/usr/bin/env python3
-
 from os import path
+
+import cv2
 import numpy as np
 import rospy
-# from cv2 import cv2 as cv2
-import cv2
 
-from ark_ros_cv_task.srv import CornerInfo, CornerInfoResponse
 from ark_ros_cv_task.msg import Corner
+from ark_ros_cv_task.srv import CornerInfo, CornerInfoResponse
 
 
-def get_potential_corners(file_id):
-    # Works, find all 3 relev corners in all 10 images but has extra ones as well
-    # file_name = f'data/Segmentation/{idx}_1.png'
-    file_name = f'../data/RGB/{file_id}_0.png'
-    bin_path = path.split(path.abspath(__file__))[0]
-    file_path = path.join(bin_path, file_name)
-    img = cv2.imread(file_path)
+def read_image(file_id):
+    """
+    Read RGB image corresponding to file_id
+    """
+    # Get current directory path and relative path to img file
+    current_path = path.split(path.abspath(__file__))[0]
+    relative_path = f'../data/RGB/{file_id}_0.png'
+
+    # Get absolute file path, read in img, return
+    absolute_path = path.join(current_path, relative_path)
+    img = cv2.imread(absolute_path)
+    return img
+
+
+def get_potential_corners(img):
+    """
+    Get list of potential corners in image
+    """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Max detections, minimum quality (between 0 and 1), minimum distance
+    # Params: Max number of detections, Minimum quality (between 0 and 1),
+    #         Minimum distance between detections
     corners = cv2.goodFeaturesToTrack(gray, 11, 0.06, 9)
-    corners = np.int0(corners)
-    corners = corners.reshape((corners.shape[0], 2))
 
-    for i in corners:
-        # x, y = i.ravel()
-        x, y = i
-        img[y, x] = (0, 255, 0)
-        # cv2.circle(img, (x, y), 3, 255, -1)
-    cv2.imwrite(f'out/{file_id}_out.png', img)
-
-    return img, corners
+    # Convert to int type, reshape as n x 2, return corner list
+    corners = np.int64(corners)
+    corners = corners.reshape((-1, 2))
+    return corners
 
 
-def get_corner_colors(img, corner):
-    # def get_corner_colors(img, corner, j):
+def perform_voting(hs_list):
     """
-    Get a list of the colors present near the corner of the image
+    Perform voting for the colors present around a corner
     """
-    # We perform voting using the HSV values of the pixels in a window
-    # around the corner. Colors with more votes than a threshold are selected,
-    # upto a limit of 3 colors.
-    ix, iy, _ = img.shape
-    cy, cx = corner
-
-    # Square window of size (2 * step + 1)
-    step = 4
-    x1, y1 = max(0, cx - step), max(0, cy - step)
-    x2, y2 = 1 + min(ix, cx + step), 1 + min(iy, cy + step)
-    roi = img[x1:x2, y1:y2, :]
-
-    roi_hs = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)[:, :, :2].reshape((-1, 2))
-
-    # print(roi.shape)
-    # cv2.imshow('temp', roi)
-    # img[max(0, cx - 2):1 + min(ix, cx + 2), max(0, cy - 2):1 + min(iy, cy + 2), :] = (0, 255, 0)
-    # cv2.imwrite(f'out/out{j}.png', roi)
-
-    votes = np.zeros(5, dtype=np.int64)
+    # Hue value bounds for 5 face colors
     bounds = [
         [0, 8],  # red
         [12, 24],  # yellow
@@ -67,40 +52,81 @@ def get_corner_colors(img, corner):
         [128, 145],  # purple
         [170, 180]  # red, we will vote in % 5 to account for wrap-around
     ]
+    # Threshold for saturation and minimum number of votes
     sat_thresh = 120
-    vote_thresh = 5
+
+    # Vote counter for 5 colors
+    votes = np.zeros(5, dtype=np.int64)
 
     # Perform voting
-    for pixel in roi_hs:
+    for pixel in hs_list:
+        # If pixel saturation is less than threshold then skip it
+        if pixel[1] < sat_thresh:
+            continue
+
+        # Iterate over the colors and check Hue bounds
         for i, bound in enumerate(bounds):
-            if pixel[1] >= sat_thresh and bound[0] <= pixel[0] <= bound[1]:
+            # Check if Hue value within bounds of this color
+            if bound[0] <= pixel[0] <= bound[1]:
                 # Use modulo to provide wrap-around for red
                 votes[i % 5] += 1
+                break
+
+    return votes
+
+
+def get_corner_colors(img, corner):
+    # def get_corner_colors(img, corner, j):
+    """
+    Get a set of the colors present near the corner of the image
+    """
+    # Image size and corner coordinates
+    ix, iy, _ = img.shape
+    cy, cx = corner
+
+    # Extract square window of size (2 * step + 1)
+    step = 4
+    x1, y1 = max(0, cx - step), max(0, cy - step)
+    x2, y2 = 1 + min(ix, cx + step), 1 + min(iy, cy + step)
+    roi = img[x1:x2, y1:y2, :]
+
+    # Convert to HSV then extract H-S pairs and flatten
+    hs_list = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)[:, :, :2].reshape((-1, 2))
+
+    # Minimum vote threshold
+    vote_thresh = 5
+    votes = perform_voting(hs_list)
 
     # Get color indices which have more votes than threshold
     colors = np.argwhere(votes >= vote_thresh).ravel()
 
-    # A corner can at-most have 3 colors
+    # A corner can at-most have 3 colors, loop until true
     while colors.size > 3:
         # Remove the least-voted color
         colors = np.delete(colors, np.argmin(votes[colors]))
-    # print(colors)
-    # print()
+
+    # Return as a set
     return set(colors)
 
 
 def get_corner_info(file_id):
     # Opposite face colors
+    # We use these to get the third face color for corners with only
+    # two visible faces in a particular image
     opposites = {0: 6, 1: 3, 2: 4, 3: 1, 4: 2, 6: 0}
-    img, corners = get_potential_corners(file_id)
 
+    # Read in image
+    img = read_image(file_id)
+    corner_coords = get_potential_corners(img)
+
+    # TODO: Refactor and optimize this function
     # Make a set of votes colors
     all_colors = set()
     colors_list = []
     ids = []
     p_candidates = {}
 
-    for k, corner in enumerate(corners):
+    for k, corner in enumerate(corner_coords):
         colors = get_corner_colors(img, corner)
 
         # Add color to the common set for this image
@@ -121,14 +147,14 @@ def get_corner_info(file_id):
     for key, val in p_candidates.items():
         missing = all_colors - colors_list[val]
         if not missing:
-            candidates[key] = corners[val]
+            candidates[key] = corner_coords[val]
             continue
 
         missing = opposites[missing.pop()]
         colors_list[val].add(missing)
         key = ''.join(str(x) for x in sorted(colors_list[val]))
         # print(missing, key)
-        candidates[key] = corners[val]
+        candidates[key] = corner_coords[val]
     print(p_candidates)
     print(candidates)
     return candidates
@@ -140,7 +166,6 @@ def handle_corner_info(req):
 
     for key, val in corner_info.items():
         print(key, val)
-        # TODO: Create ROS message by importing the msg file and
         corner = Corner(key, val)
         response.corners += [corner]
 
