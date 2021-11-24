@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+from os import path
+
 import json
 import numpy as np
 import re
 import rospy
-from os import path
+
+from ark_ros_cv_task.msg import Point3D
 from ark_ros_cv_task.srv import WorldPoint, WorldPointResponse
 
 
@@ -14,7 +17,7 @@ def read_file(file_id):
     """
     # Get current directory path and relative path to img file
     current_path = path.split(path.abspath(__file__))[0]
-    relative_path = f'../data/Pose/{file_id}_2.png'
+    relative_path = f'../data/Pose/{file_id}_2.txt'
 
     # Get absolute file path, read in img, return
     absolute_path = path.join(current_path, relative_path)
@@ -99,7 +102,7 @@ def get_intrinsics_matrix():
     ])
 
 
-def main():
+def world_point_handler(req):
     # TODO: Receive request from client with file_id and list of corners
     # TODO: Return camera position in world frame
     # TODO: Return world-frame positions of the given corners
@@ -107,41 +110,70 @@ def main():
     # FIXME: Do everything here quick, refactoring much easier
     #        than ahead-of-time planning since you have code in front of you.
     #        Makes it much easier to determine logical breaks for funcs.
-    for i in range(10):
-        print(f"\n--- File {i} ---")
-        ext = get_extrinsics_matrix(i)
-        cam = get_intrinsics_matrix()
+    print(f"\n--- File {req.file_id} ---")
+    ext = get_extrinsics_matrix(req.file_id)
+    print(ext)
+    cam = get_intrinsics_matrix()
 
-        ext_inv = np.linalg.inv(ext)
-        cam_inv = np.linalg.inv(cam)
+    ext_inv = np.linalg.inv(ext)
+    cam_inv = np.linalg.inv(cam)
 
-        # cent = np.array([[0, 0, 1]]).T
-        cent = np.array([[0, 0, 0]]).T
-        c = cam @ cent
-        pc = cam_inv @ c
-        pc_h = np.vstack((pc, np.ones((1, 1))))
-        print(ext_inv @ pc_h)
+    # cent = np.array([[0, 0, 1]]).T
+    cent = np.array([[0, 0, 0]]).T
+    c = cam @ cent
+    pc = cam_inv @ c
+    pc_h = np.vstack((pc, np.ones((1, 1))))
+    cam = ext_inv @ pc_h  # World position of origin
 
-        # TODO: Need to do stuff from above 3 lines
-        # cam_inv multiplication, vstack to get homogenous, and ext_inv
-        pass
+    response = WorldPointResponse()
+    response.cam = Point3D(*cam[:3])
+    response.points = []
+
+    # TODO: Add position of cam origin to Response object
+
+    # TODO: Need to do stuff from above 3 lines
+    # cam_inv multiplication, vstack to get homogenous, and ext_inv
+    for corner_object in req.corners:
+        # Convert corner pixel coordinate to a homogenous vector
+        corner = np.ones((3, 1))
+        corner[:2, 0] = corner_object.coords
+        # print("Corner1:", corner)
+        corner[1, 0] = 144 - corner[1, 0]
+        # print("Corner2:", corner)
+
+        # Get position of corner pixel in camera frame
+        corner_cam = cam_inv @ corner
+        print("Corner cam:", corner_cam)
+
+        # Homogenize and convert to world frame
+        corner_cam = np.vstack((corner_cam, np.ones((1, 1))))
+        corner_world = ext_inv @ corner_cam
+        response.points.append(Point3D(*corner_world[:3]))
+        print(corner_object.key)
+        # print(corner_world)
+    print(req)
+    print(response)
+    return response
+    # corner = np.atleast_2d(np.array(req.corners[0].coords + (1,))).T
+    # print(corner)
+
+    # print("Returning [%s + %s = %s]" % (req.a, req.b, (req.a + req.b)))
+    # return WorldPointResponse(req.a + req.b)
 
 
-if __name__ == '__main__':
-    main()
-
-
-def handle_add_two_ints(req):
-    print("Returning [%s + %s = %s]" % (req.a, req.b, (req.a + req.b)))
-    return WorldPointResponse(req.a + req.b)
-
-
-def add_two_ints_server():
-    rospy.init_node('add_two_ints_server')
-    s = rospy.Service('add_two_ints', AddTwoInts, handle_add_two_ints)
-    print("Ready to add two ints.")
+def world_point_server():
+    rospy.init_node('world_point_server')
+    s = rospy.Service('world_point', WorldPoint, world_point_handler)
+    print("World Point Server serving.")
     rospy.spin()
 
 
 if __name__ == "__main__":
-    add_two_ints_server()
+    # class Temp:
+    #     pass
+    # req = Temp()
+    # req.file_id = 1
+    # req.corners = [Temp()]
+    # req.corners[0].coords = (0, 0)
+    # world_point_handler(req)
+    world_point_server()

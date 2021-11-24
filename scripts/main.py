@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+import numpy as np
 import rospy
+import matplotlib.pyplot as plt
 
-from ark_ros_cv_task.srv import CornerInfo
+from ark_ros_cv_task.srv import CornerInfo, WorldPoint
 
 
 def corner_info_client(file_id):
@@ -15,14 +17,70 @@ def corner_info_client(file_id):
         print("Service call failed: %s" % e)
 
 
+def world_point_client(file_id, corners):
+    rospy.wait_for_service('corner_info')
+    try:
+        world_point = rospy.ServiceProxy('world_point', WorldPoint)
+        resp = world_point(file_id, corners.corners)
+        return resp
+    except rospy.ServiceException as e:
+        print("Service call failed: %s" % e)
+
+
+def plot3d():
+    pass
+
+
 def main():
-    for i in range(10):
-        info = corner_info_client(i)
+    detections = {}
+    for i in range(0, 2):
+        corners = corner_info_client(i)
+        # print(corners)
         # TODO: Request world point server with this info, get world points
+        points = world_point_client(i, corners)
+        # print(points)
+        cam = points.cam
+        # print(cam)
+        cam = np.array([cam.x, cam.y, cam.z])
+        # print(cam)
+        for corner, point in zip(corners.corners, points.points):
+            pt = np.array([point.x, point.y, point.z])
+            detections[corner.key] = detections.get(corner.key, []) + [(cam, pt)]
+            # print(pt, corner.key)
+        # return
+        # print(detections)
         # TODO: Use world point + camera pos to parameterize equation of ray
         # TODO: Accumulate all rays corresponding to a single corner
         #       across all images
-        print(info)
+        # print(info.corners)
+        # print(type(info.corners[0].coords))
+        # break
+    # print(detections)
+    return
+    for key, lines in detections.items():
+        # Can't do anything if only one line equation for corner
+        if len(lines) < 5:
+            continue
+
+        # Iterate over all pairs of lines
+        for i, line1 in enumerate(lines):
+            for j, line2 in enumerate(lines[i + 1:]):
+                # FIXME: Absolutely gon output
+                #  Draw these lines in 3D and see what's happening
+                print(line1)
+                print(line2)
+
+                unit_a = line1[0] - line1[1]
+                unit_b = line2[0] - line2[1]
+                unit_a /= np.linalg.norm(unit_a)
+                unit_b /= np.linalg.norm(unit_b)
+                unit_c = np.cross(unit_b, unit_a)
+                unit_c /= np.linalg.norm(unit_c)
+
+                rhs = line2[1] - line1[1]
+                lhs = np.array([unit_a, -unit_b, unit_c]).T
+                # print(lhs, rhs)
+                # print(np.linalg.solve(lhs, rhs))
         break
     # TODO: For all corners with more than one line, find the point that
     #       minimizes (sum of squared?) distances to all the lines.

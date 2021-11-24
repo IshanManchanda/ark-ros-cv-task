@@ -166,7 +166,7 @@ def get_corner_info(file_id):
     return corners
 
 
-def handle_corner_info(req):
+def corner_info_handler(req):
     # Perform the corner coordinate + color computation for this file
     corner_info = get_corner_info(req.file_id)
 
@@ -182,8 +182,8 @@ def handle_corner_info(req):
 
 def corner_info_server():
     rospy.init_node('corner_info_server')
-    s = rospy.Service('corner_info', CornerInfo, handle_corner_info)
-    print("Corner Info Server serving")
+    s = rospy.Service('corner_info', CornerInfo, corner_info_handler)
+    print("Corner Info Server serving.")
     rospy.spin()
 
 
