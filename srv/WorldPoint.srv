@@ -1,5 +1,5 @@
 int64 file_id
 Corner[] corners
 ---
-Point3D cam
-Point3D[] points
+Point cam
+Point[] points

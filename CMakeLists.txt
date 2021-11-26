@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  geometry_msgs
   message_generation
 )
 
@@ -50,16 +51,12 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  Num.msg
   Corner.msg
-  Point2D.msg
-  Point3D.msg
 )
 
 ## Generate services in the 'srv' folder
 add_service_files(
   FILES
-  AddTwoInts.srv
   CornerInfo.srv
   WorldPoint.srv
 )
@@ -75,6 +72,7 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs
+  geometry_msgs
 )
 
 ################################################
@@ -109,7 +107,7 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ark_ros_cv_task
-  CATKIN_DEPENDS roscpp rospy std_msgs message_runtime
+  CATKIN_DEPENDS roscpp rospy std_msgs geometry_msgs message_runtime
   DEPENDS system_lib
 )
 
@@ -164,10 +162,9 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
-  scripts/talker.py
-  scripts/listener.py
-  scripts/add_two_ints_server.py
-  scripts/add_two_ints_client.py
+  scripts/corner_info_server.py
+  scripts/main.py
+  scripts/world_point_server.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

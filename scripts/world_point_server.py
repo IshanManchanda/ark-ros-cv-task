@@ -7,7 +7,7 @@ import numpy as np
 import re
 import rospy
 
-from ark_ros_cv_task.msg import Point3D
+from geometry_msgs.msg import Point
 from ark_ros_cv_task.srv import WorldPoint, WorldPointResponse
 
 
@@ -94,10 +94,9 @@ def get_extrinsics_matrix(file_id):
 
 def get_intrinsics_matrix():
     f = 128
-    cx, cy = 256 / 2, 144 / 2
     return np.array([
-        [f, 0, cx],
-        [0, f, cy],
+        [f, 0, 0],
+        [0, f, 0],
         [0, 0, 1],
     ])
 
@@ -114,19 +113,20 @@ def world_point_handler(req):
     ext = get_extrinsics_matrix(req.file_id)
     print(ext)
     cam = get_intrinsics_matrix()
+    cx, cy = 256 / 2, 144 / 2
 
     ext_inv = np.linalg.inv(ext)
     cam_inv = np.linalg.inv(cam)
 
     # cent = np.array([[0, 0, 1]]).T
-    cent = np.array([[0, 0, 0]]).T
+    cent = np.array([[cx, cy, 0]]).T
     c = cam @ cent
     pc = cam_inv @ c
     pc_h = np.vstack((pc, np.ones((1, 1))))
     cam = ext_inv @ pc_h  # World position of origin
 
     response = WorldPointResponse()
-    response.cam = Point3D(*cam[:3])
+    response.cam = Point(*cam[:3])
     response.points = []
 
     # TODO: Add position of cam origin to Response object
@@ -137,8 +137,9 @@ def world_point_handler(req):
         # Convert corner pixel coordinate to a homogenous vector
         corner = np.ones((3, 1))
         corner[:2, 0] = corner_object.coords
+        corner[0, 0] = corner[0, 0] - cx
         # print("Corner1:", corner)
-        corner[1, 0] = 144 - corner[1, 0]
+        corner[1, 0] = cy - corner[1, 0]
         # print("Corner2:", corner)
 
         # Get position of corner pixel in camera frame
@@ -148,17 +149,17 @@ def world_point_handler(req):
         # Homogenize and convert to world frame
         corner_cam = np.vstack((corner_cam, np.ones((1, 1))))
         corner_world = ext_inv @ corner_cam
-        response.points.append(Point3D(*corner_world[:3]))
+        print(corner_world)
+        response.points.append(Point(*corner_world[:3]))
         print(corner_object.key)
         # print(corner_world)
     print(req)
     print(response)
+    print(cam_inv)
+    print(ext_inv)
     return response
     # corner = np.atleast_2d(np.array(req.corners[0].coords + (1,))).T
     # print(corner)
-
-    # print("Returning [%s + %s = %s]" % (req.a, req.b, (req.a + req.b)))
-    # return WorldPointResponse(req.a + req.b)
 
 
 def world_point_server():

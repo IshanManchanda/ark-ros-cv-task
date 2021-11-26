@@ -33,7 +33,7 @@ def plot3d():
 
 def main():
     detections = {}
-    for i in range(0, 2):
+    for i in range(0, 10):
         corners = corner_info_client(i)
         # print(corners)
         # TODO: Request world point server with this info, get world points
@@ -45,7 +45,11 @@ def main():
         # print(cam)
         for corner, point in zip(corners.corners, points.points):
             pt = np.array([point.x, point.y, point.z])
-            detections[corner.key] = detections.get(corner.key, []) + [(cam, pt)]
+            try:
+                detections[corner.key] += [(cam, pt)]
+            except KeyError:
+                detections[corner.key] = [(cam, pt)]
+            # detections[corner.key] = detections.get(corner.key, []) + [(cam, pt)]
             # print(pt, corner.key)
         # return
         # print(detections)
@@ -57,9 +61,34 @@ def main():
         # break
     # print(detections)
     return
+
+    # plt.rcParams["figure.figsize"] = [7.50, 3.50]
+    plt.rcParams["figure.autolayout"] = True
+
+    # print(detections)
     for key, lines in detections.items():
+        # if len(lines) <= 2: continue
+        # if len(lines) <= 2 or key == '034' or key == '012' or key == '014': continue
+        # print(key, len(lines))
+        # continue
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+
+        for line in lines:
+            x, y, z = np.array(line).T
+            # print(x, y, z)
+            ax.scatter(x, y, z, c='red', s=100)
+            ax.plot(x, y, z, color='red')
+        # break
+    plt.show()
+
+
+    return
+
+    for key, lines in detections.items():
+        print(key)
         # Can't do anything if only one line equation for corner
-        if len(lines) < 5:
+        if len(lines) < 2:
             continue
 
         # Iterate over all pairs of lines
@@ -67,8 +96,8 @@ def main():
             for j, line2 in enumerate(lines[i + 1:]):
                 # FIXME: Absolutely gon output
                 #  Draw these lines in 3D and see what's happening
-                print(line1)
-                print(line2)
+                # print(line1)
+                # print(line2)
 
                 unit_a = line1[0] - line1[1]
                 unit_b = line2[0] - line2[1]
@@ -80,8 +109,8 @@ def main():
                 rhs = line2[1] - line1[1]
                 lhs = np.array([unit_a, -unit_b, unit_c]).T
                 # print(lhs, rhs)
-                # print(np.linalg.solve(lhs, rhs))
-        break
+                print(np.linalg.solve(lhs, rhs))
+        # break
     # TODO: For all corners with more than one line, find the point that
     #       minimizes (sum of squared?) distances to all the lines.
     # REVIEW: Is gradient descent viable?
