@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-
+import matplotlib.pyplot as plt
 import numpy as np
 import rospy
-import matplotlib.pyplot as plt
 
 from ark_ros_cv_task.srv import CornerInfo, WorldPoint
 
@@ -29,6 +28,30 @@ def world_point_client(file_id, corners):
 
 def plot3d():
     pass
+
+
+def get_center_point(lines):
+    # List of tuples of points.
+    a = np.zeros((3, 3))
+    b = np.zeros((3, 1))
+    for line in lines:
+        ui = line[0] - line[1]
+        ui /= np.linalg.norm(ui)
+        ui = np.atleast_2d(ui)
+        # print(ui, ui.shape)
+        proj = np.eye(3) - (ui.T @ ui)
+        print(line[1].shape)
+        print(np.atleast_2d(line[1]).T.shape)
+        pi = proj @ np.atleast_2d(line[1]).T
+        print(pi.shape)
+
+        a += proj
+        b += pi
+        # print(proj)
+        # break
+    ans = np.linalg.inv(a) @ b
+    print(ans)
+    return ans
 
 
 def main():
@@ -60,30 +83,31 @@ def main():
         # print(type(info.corners[0].coords))
         # break
     # print(detections)
-    return
+    # return
 
-    # plt.rcParams["figure.figsize"] = [7.50, 3.50]
-    plt.rcParams["figure.autolayout"] = True
+    # plt.rcParams["figure.autolayout"] = True
 
     # print(detections)
-    for key, lines in detections.items():
-        # if len(lines) <= 2: continue
-        # if len(lines) <= 2 or key == '034' or key == '012' or key == '014': continue
-        # print(key, len(lines))
-        # continue
-        fig = plt.figure()
-        ax = fig.add_subplot(projection="3d")
+    # for key, lines in detections.items():
+    #     # if len(lines) <= 2: continue
+    #     # if len(lines) <= 2 or key == '034' or key == '012' or key == '014': continue
+    #     # print(key, len(lines))
+    #     # continue
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(projection="3d")
+    #
+    #     for line in lines:
+    #         x, y, z = np.array(line).T
+    #         # print(x, y, z)
+    #         ax.scatter(x, y, z, c='red', s=100)
+    #         ax.plot(x, y, z, color='red')
+    #     # break
+    # plt.show()
 
-        for line in lines:
-            x, y, z = np.array(line).T
-            # print(x, y, z)
-            ax.scatter(x, y, z, c='red', s=100)
-            ax.plot(x, y, z, color='red')
-        # break
-    plt.show()
-
-
-    return
+    # return
+    plt.rcParams["figure.autolayout"] = True
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
 
     for key, lines in detections.items():
         print(key)
@@ -91,6 +115,14 @@ def main():
         if len(lines) < 2:
             continue
 
+        cp = get_center_point(lines)
+        x, y, z = cp
+        ax.scatter(x, y, z, c='red', s=100)
+        ax.plot(x, y, z, color='red')
+
+        """
+        acc = np.zeros(3)
+        ctr = 0
         # Iterate over all pairs of lines
         for i, line1 in enumerate(lines):
             for j, line2 in enumerate(lines[i + 1:]):
@@ -109,8 +141,19 @@ def main():
                 rhs = line2[1] - line1[1]
                 lhs = np.array([unit_a, -unit_b, unit_c]).T
                 # print(lhs, rhs)
-                print(np.linalg.solve(lhs, rhs))
-        # break
+                ans = np.linalg.solve(lhs, rhs)
+                acc += ans
+                ctr += 1
+        # if x ** 2 + y ** 2 + z ** 2 > 200:
+        #     continue
+        print(acc/ctr)
+        x, y, z = acc / ctr
+        ax.scatter(x, y, z, c='red', s=100)
+        ax.plot(x, y, z, color='red')
+        """
+
+    plt.show()
+    # break
     # TODO: For all corners with more than one line, find the point that
     #       minimizes (sum of squared?) distances to all the lines.
     # REVIEW: Is gradient descent viable?

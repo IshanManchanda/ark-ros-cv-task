@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-
 from os import path
 
 import json
 import numpy as np
 import re
 import rospy
-
 from geometry_msgs.msg import Point
+
 from ark_ros_cv_task.srv import WorldPoint, WorldPointResponse
 
 
