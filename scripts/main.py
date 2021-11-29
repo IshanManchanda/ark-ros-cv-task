@@ -75,32 +75,22 @@ def compute_loss(x, y, z, theta, s, detections):
     loss = 0
     # Iterate over all corners for which we have projection lines
     for key, lines in detections.items():
+        p = tf.convert_to_tensor(corners[key])
+
         # And then over each line
         for line in lines:
-            # For some reason Tensorflow's auto differentiation
-            # didn't work with numpy vector operations. Thus using scalar
-            px, py, pz = corners[key]
-            bx, by, bz = line[0]
-            dx, dy, dz = line[1]
+            b = tf.constant(line[0])
+            d = tf.constant(line[1])
 
             # Vector from point on line to corner
-            vx = px - bx
-            vy = py - by
-            vz = pz - bz
-
+            v = p - b
             # Compute dot product with unit vector of the line
-            t = vx * dx + vy * dy + vz * dz
+            t = tf.reduce_sum(v * d)
 
             # Get point of projection/foot of perpendicular on line
-            px1 = bx + dx * t
-            py1 = by + dy * t
-            pz1 = bz + dz * t
-
-            # Take squared distance
-            dx2 = (px - px1) ** 2
-            dy2 = (py - py1) ** 2
-            dz2 = (pz - pz1) ** 2
-            loss += dx2 + dy2 + dz2
+            p1 = b + d * t
+            # Take squared distance from corner to PoP/FoP
+            loss += tf.reduce_sum(tf.square(p - p1))
 
     return loss
 
