@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import rospy
-
+import tensorflow as tf
 from ark_ros_cv_task.srv import CornerInfo, WorldPoint
 
 
@@ -40,18 +40,122 @@ def get_center_point(lines):
         ui = np.atleast_2d(ui)
         # print(ui, ui.shape)
         proj = np.eye(3) - (ui.T @ ui)
-        print(line[1].shape)
-        print(np.atleast_2d(line[1]).T.shape)
         pi = proj @ np.atleast_2d(line[1]).T
-        print(pi.shape)
 
         a += proj
         b += pi
         # print(proj)
         # break
     ans = np.linalg.inv(a) @ b
-    print(ans)
     return ans
+
+
+def fit_cube(detections):
+    # Initialize tf.Variables
+    # Define cost function
+    # Evaluate cost function within Gradient Tape
+    # Pass gradient to optimizer function
+    # Repeat until loss small enough
+
+    # centroid = tf.Variable([0.0, 0.0, 0.0], dtype=tf.float64)
+    x = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+    y = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+    z = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+    theta = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+    s = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+
+    optimizer = tf.keras.optimizers.Adam()
+
+    steps = 1
+    print("\n\n")
+    for step in range(steps):
+        with tf.GradientTape() as tape:
+            x_delta = s * np.sqrt(2) * tf.cos(theta + np.pi / 4)
+            y_delta = s * np.sqrt(2) * tf.sin(theta + np.pi / 4)
+            '''
+            corners = {
+                # '126': (x + x_delta, y + y_delta, z - s),
+                # '023': (x - x_delta, y + y_delta, z + s),
+                '126': (x + x_delta, y + y_delta, z - s),
+                '236': (x - x_delta, y + y_delta, z - s),
+                '346': (x - x_delta, y - y_delta, z - s),
+                '146': (x + x_delta, y - y_delta, z - s),
+                '012': (x + x_delta, y + y_delta, z + s),
+                '023': (x - x_delta, y + y_delta, z + s),
+                '034': (x - x_delta, y - y_delta, z + s),
+                '014': (x + x_delta, y - y_delta, z + s),
+            }
+
+            loss = 0
+            for key, lines in detections.items():
+                for line in lines:
+                    px, py, pz = corners[key]
+                    loss += px * px + py * py + pz * pz
+            # loss = x * y
+            # x_delta = s * np.sqrt(2) * tf.cos(theta + np.pi / 4)
+            # y_delta = s * np.sqrt(2) * tf.sin(theta + np.pi / 4)
+            # loss = x_delta * y_delta
+            # px = x + x_delta
+            # py = y + y_delta
+            # pz = z - s
+
+            # loss = px * py * pz
+            # loss = 0
+            # loss += tf.reduce_sum(np.array([x + x_delta, y + y_delta, z - s]))
+            '''
+            """
+            corners = {
+                '126': np.array([x + x_delta, y + y_delta, z - s]),
+                '236': np.array([x - x_delta, y + y_delta, z - s]),
+                '346': np.array([x - x_delta, y - y_delta, z - s]),
+                '146': np.array([x + x_delta, y - y_delta, z - s]),
+                '012': np.array([x + x_delta, y + y_delta, z + s]),
+                '023': np.array([x - x_delta, y + y_delta, z + s]),
+                '034': np.array([x - x_delta, y - y_delta, z + s]),
+                '014': np.array([x + x_delta, y - y_delta, z + s]),
+            }
+            """
+            corners = {
+                # '126': (x + x_delta, y + y_delta, z - s),
+                # '023': (x - x_delta, y + y_delta, z + s),
+                '126': (x + x_delta, y + y_delta, z - s),
+                '236': (x - x_delta, y + y_delta, z - s),
+                '346': (x - x_delta, y - y_delta, z - s),
+                '146': (x + x_delta, y - y_delta, z - s),
+                '012': (x + x_delta, y + y_delta, z + s),
+                '023': (x - x_delta, y + y_delta, z + s),
+                '034': (x - x_delta, y - y_delta, z + s),
+                '014': (x + x_delta, y - y_delta, z + s),
+            }
+            loss = 0
+            for key, lines in detections.items():
+                # Get dist from corners[key] to each line
+                for line in lines:
+                    loss += corners[key][0] + corners[key][1] + corners[key][2]
+                    # loss += tf.reduce_sum(corners[key])
+                    # loss += tf.norm(corners[key] - line[0])
+                    # d = line[1] - line[0]
+                    # d = d / np.linalg.norm(d)
+                    # v = corners[key] - line[0]
+                    # t = tf.reduce_sum(tf.multiply(v, d))
+                    # p = line[0] + t * d
+                    # loss += tf.norm(corners[key] - p)
+                    # ba = line[0] - corners[key]
+                    # bc = line[0] - line[1]
+                    # loss += tf.norm(tf.linalg.cross(ba, bc)) / tf.norm(bc)
+        # print(loss)
+        print(f'Step {step}:', loss)
+        print()
+        grads = tape.gradient(loss, [x, y, z, theta, s])
+        print('Grads:', grads)
+        print("\n\n")
+        optimizer.apply_gradients(zip(grads, [x, y, z, theta, s]))
+    # print(x, y, z, theta, s)
+    print(x)
+    print(y)
+    print(z)
+    print(theta)
+    print(s)
 
 
 def main():
@@ -104,6 +208,14 @@ def main():
     #     # break
     # plt.show()
 
+    fit_cube(detections)
+    return
+    for key, lines in detections.items():
+        print(key)
+        print(np.array2string(np.array(lines), separator=','))
+
+    return
+
     # return
     plt.rcParams["figure.autolayout"] = True
     fig = plt.figure()
@@ -115,6 +227,11 @@ def main():
         if len(lines) < 2:
             continue
 
+        # for line in lines:
+        #     l1 = np.array(line)
+        #     x, y, z = l1.T
+        #     ax.scatter(x, y, z, c='green', s=100)
+        #     ax.plot(x, y, z, color='green')
         cp = get_center_point(lines)
         x, y, z = cp
         ax.scatter(x, y, z, c='red', s=100)
