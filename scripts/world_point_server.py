@@ -101,16 +101,7 @@ def get_intrinsics_matrix():
 
 
 def world_point_handler(req):
-    # TODO: Receive request from client with file_id and list of corners
-    # TODO: Return camera position in world frame
-    # TODO: Return world-frame positions of the given corners
-    #       by pumping through inv intrinsics and then inv extrinsics
-    # FIXME: Do everything here quick, refactoring much easier
-    #        than ahead-of-time planning since you have code in front of you.
-    #        Makes it much easier to determine logical breaks for funcs.
-    print(f"\n--- File {req.file_id} ---")
     ext = get_extrinsics_matrix(req.file_id)
-    print(ext)
     cam = get_intrinsics_matrix()
     cx, cy = 256 / 2, 144 / 2
 
@@ -128,18 +119,13 @@ def world_point_handler(req):
     response.cam = Point(*cam[:3])
     response.points = []
 
-    # TODO: Add position of cam origin to Response object
-
-    # TODO: Need to do stuff from above 3 lines
     # cam_inv multiplication, vstack to get homogenous, and ext_inv
     for corner_object in req.corners:
         # Convert corner pixel coordinate to a homogenous vector
         corner = np.ones((3, 1))
         corner[:2, 0] = corner_object.coords
         corner[0, 0] = corner[0, 0] - cx
-        # print("Corner1:", corner)
         corner[1, 0] = cy - corner[1, 0]
-        # print("Corner2:", corner)
 
         # Get position of corner pixel in camera frame
         corner_cam = cam_inv @ corner
@@ -151,14 +137,12 @@ def world_point_handler(req):
         print(corner_world)
         response.points.append(Point(*corner_world[:3]))
         print(corner_object.key)
-        # print(corner_world)
+
     print(req)
     print(response)
     print(cam_inv)
     print(ext_inv)
     return response
-    # corner = np.atleast_2d(np.array(req.corners[0].coords + (1,))).T
-    # print(corner)
 
 
 def world_point_server():
@@ -169,11 +153,4 @@ def world_point_server():
 
 
 if __name__ == "__main__":
-    # class Temp:
-    #     pass
-    # req = Temp()
-    # req.file_id = 1
-    # req.corners = [Temp()]
-    # req.corners[0].coords = (0, 0)
-    # world_point_handler(req)
     world_point_server()

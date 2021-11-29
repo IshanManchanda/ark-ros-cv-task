@@ -188,9 +188,4 @@ def corner_info_server():
 
 
 if __name__ == "__main__":
-    # class Temp:
-    #     pass
-    # req = Temp()
-    # req.file_id = 0
-    # handle_corner_info(req)
     corner_info_server()
