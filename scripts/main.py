@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import matplotlib.pyplot as plt
+# UNCOMMENT: matplotlib import
+# import matplotlib.pyplot as plt
 import numpy as np
 import rospy
 import tensorflow as tf
@@ -197,22 +198,28 @@ def main():
     # Pass numpy as math library to prevent getting tf Variables as output
     corner_coords = get_parameterized_corners(x, y, z, theta, s, np)
 
-    # Plot final corner coordinates
-    plt.rcParams["figure.autolayout"] = True
-    fig = plt.figure()
-    ax = fig.add_subplot(projection="3d")
-    for key, point in corner_coords.items():
-        x, y, z = point
-        ax.scatter(x, y, z, c='red', s=100)
+    # UNCOMMENT: Common code for 3D plotting
+    # plt.rcParams["figure.autolayout"] = True
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection="3d")
 
-    # Plot projection lines
+    # UNCOMMENT: Plot final corner coordinates
+    # for key, point in corner_coords.items():
+    #     x, y, z = point
+    #     ax.scatter(x, y, z, c='red', s=100)
+
+    # UNCOMMENT: Plot projection lines
     # for key, lines in detections.items():
     #     for line in lines:
     #         x, y, z = np.array(line).T
     #         ax.scatter(x, y, z, c='red', s=100)
     #         ax.plot(x, y, z, color='red')
 
-    plt.show()
+    # Show graph
+    # Plotting projection lines causes matplotlib to change the axes scales.
+    # Thus the cube corners may appear cuboidal in case both are plotted.
+    # REVIEW: Save image in case GUI backend not available
+    # plt.show()
 
 
 if __name__ == "__main__":
