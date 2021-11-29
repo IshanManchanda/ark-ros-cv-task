@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rospy
 import tensorflow as tf
+
 from ark_ros_cv_task.srv import CornerInfo, WorldPoint
 
 
@@ -26,265 +27,165 @@ def world_point_client(file_id, corners):
         print("Service call failed: %s" % e)
 
 
-def plot3d():
-    pass
+def get_parameterized_corners(x, y, z, theta, s, math_lib=tf):
+    # Offsets of corners from centroid in the x and y directions
+    x_delta = s * np.sqrt(2) * math_lib.cos(theta + np.pi / 4)
+    y_delta = s * np.sqrt(2) * math_lib.sin(theta + np.pi / 4)
+
+    # Parameterized forms of the corners
+    # The keys correspond to the color-based corner descriptors.
+    corners = {
+        '126': (x + x_delta, y + y_delta, z - s),
+        '236': (x - x_delta, y + y_delta, z - s),
+        '346': (x - x_delta, y - y_delta, z - s),
+        '146': (x + x_delta, y - y_delta, z - s),
+        '012': (x + x_delta, y + y_delta, z + s),
+        '023': (x - x_delta, y + y_delta, z + s),
+        '034': (x - x_delta, y - y_delta, z + s),
+        '014': (x + x_delta, y - y_delta, z + s),
+    }
+    return corners
 
 
-def get_center_point(lines):
-    # List of tuples of points.
-    a = np.zeros((3, 3))
-    b = np.zeros((3, 1))
-    for line in lines:
-        ui = line[0] - line[1]
-        ui /= np.linalg.norm(ui)
-        ui = np.atleast_2d(ui)
-        # print(ui, ui.shape)
-        proj = np.eye(3) - (ui.T @ ui)
-        pi = proj @ np.atleast_2d(line[1]).T
+def compute_loss(x, y, z, theta, s, detections):
+    # Parameterized form of all corners
+    corners = get_parameterized_corners(x, y, z, theta, s)
 
-        a += proj
-        b += pi
-        # print(proj)
-        # break
-    ans = np.linalg.inv(a) @ b
-    return ans
+    # The loss is the sum of squared distances of each corner
+    # from all its projection lines.
+    loss = 0
+    # Iterate over all corners for which we have projection lines
+    for key, lines in detections.items():
+        # And then over each line
+        for line in lines:
+            # For some reason Tensorflow's auto differentiation
+            # didn't work with vector operations. Thus using scalar
+            px, py, pz = corners[key]
+            bx, by, bz = line[0]
+            dx, dy, dz = line[1]
+
+            # Vector from point on line to corner
+            vx = px - bx
+            vy = py - by
+            vz = pz - bz
+
+            # Compute dot product with unit vector of the line
+            t = vx * dx + vy * dy + vz * dz
+
+            # Get point of projection/foot of perpendicular on line
+            px1 = bx + dx * t
+            py1 = by + dy * t
+            pz1 = bz + dz * t
+
+            # Take squared distance
+            dx2 = (px - px1) ** 2
+            dy2 = (py - py1) ** 2
+            dz2 = (pz - pz1) ** 2
+            loss += dx2 + dy2 + dz2
+
+    return loss
 
 
 def fit_cube(detections):
-    # Initialize tf.Variables
-    # Define cost function
-    # Evaluate cost function within Gradient Tape
-    # Pass gradient to optimizer function
-    # Repeat until loss small enough
+    # Parameters of the cube: The parameterization leverages the information
+    # that the cube is lying on a perfectly flat surface.
+    # Thus we need only 5 parameters instead of 7.
+    # The parameters are: the x, y, z coordinates of the centroid,
+    # the angle of rotation about the vertical (z-axis), and the side_length/2.
+    # Initial values are eye-balled figures from previous training.
+    x = tf.Variable(10.0, dtype=tf.float64, trainable=True)
+    y = tf.Variable(3.0, dtype=tf.float64, trainable=True)
+    z = tf.Variable(-10.0, dtype=tf.float64, trainable=True)
+    theta = tf.Variable(np.pi / 2, dtype=tf.float64, trainable=True)
+    s = tf.Variable(5.0, dtype=tf.float64, trainable=True)
 
-    # centroid = tf.Variable([0.0, 0.0, 0.0], dtype=tf.float64)
-    x = tf.Variable(1.0, dtype=tf.float64, trainable=True)
-    y = tf.Variable(1.0, dtype=tf.float64, trainable=True)
-    z = tf.Variable(1.0, dtype=tf.float64, trainable=True)
-    theta = tf.Variable(1.0, dtype=tf.float64, trainable=True)
-    s = tf.Variable(1.0, dtype=tf.float64, trainable=True)
+    # Adam optimizer
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.02)
 
-    optimizer = tf.keras.optimizers.Adam()
+    # Convert the 3D lines from 2-point representation to
+    # line + unit vector representation.
+    processed = {}
+    for key, lines in detections.items():
+        new_lines = []
+        for line in lines:
+            # Simply subtract the two points and normalize to get unit vector
+            line_unit_vec = line[1] - line[0]
+            line_unit_vec /= np.linalg.norm(line_unit_vec)
+            new_lines.append((line[0], line_unit_vec))
+        processed[key] = new_lines
 
-    steps = 1
-    print("\n\n")
-    for step in range(steps):
-        with tf.GradientTape() as tape:
-            x_delta = s * np.sqrt(2) * tf.cos(theta + np.pi / 4)
-            y_delta = s * np.sqrt(2) * tf.sin(theta + np.pi / 4)
-            '''
-            corners = {
-                # '126': (x + x_delta, y + y_delta, z - s),
-                # '023': (x - x_delta, y + y_delta, z + s),
-                '126': (x + x_delta, y + y_delta, z - s),
-                '236': (x - x_delta, y + y_delta, z - s),
-                '346': (x - x_delta, y - y_delta, z - s),
-                '146': (x + x_delta, y - y_delta, z - s),
-                '012': (x + x_delta, y + y_delta, z + s),
-                '023': (x - x_delta, y + y_delta, z + s),
-                '034': (x - x_delta, y - y_delta, z + s),
-                '014': (x + x_delta, y - y_delta, z + s),
-            }
+    # Maximum number of training steps and variable to hold previous loss
+    max_steps = 100
+    prev_loss = np.inf
+    early_stop_thresh = 0.1
 
-            loss = 0
-            for key, lines in detections.items():
-                for line in lines:
-                    px, py, pz = corners[key]
-                    loss += px * px + py * py + pz * pz
-            # loss = x * y
-            # x_delta = s * np.sqrt(2) * tf.cos(theta + np.pi / 4)
-            # y_delta = s * np.sqrt(2) * tf.sin(theta + np.pi / 4)
-            # loss = x_delta * y_delta
-            # px = x + x_delta
-            # py = y + y_delta
-            # pz = z - s
+    # Catch KeyboardInterrupt to early stop learning if needed
+    try:
+        for step in range(max_steps):
+            with tf.GradientTape() as tape:
+                loss = compute_loss(x, y, z, theta, s, processed)
 
-            # loss = px * py * pz
-            # loss = 0
-            # loss += tf.reduce_sum(np.array([x + x_delta, y + y_delta, z - s]))
-            '''
-            """
-            corners = {
-                '126': np.array([x + x_delta, y + y_delta, z - s]),
-                '236': np.array([x - x_delta, y + y_delta, z - s]),
-                '346': np.array([x - x_delta, y - y_delta, z - s]),
-                '146': np.array([x + x_delta, y - y_delta, z - s]),
-                '012': np.array([x + x_delta, y + y_delta, z + s]),
-                '023': np.array([x - x_delta, y + y_delta, z + s]),
-                '034': np.array([x - x_delta, y - y_delta, z + s]),
-                '014': np.array([x + x_delta, y - y_delta, z + s]),
-            }
-            """
-            corners = {
-                # '126': (x + x_delta, y + y_delta, z - s),
-                # '023': (x - x_delta, y + y_delta, z + s),
-                '126': (x + x_delta, y + y_delta, z - s),
-                '236': (x - x_delta, y + y_delta, z - s),
-                '346': (x - x_delta, y - y_delta, z - s),
-                '146': (x + x_delta, y - y_delta, z - s),
-                '012': (x + x_delta, y + y_delta, z + s),
-                '023': (x - x_delta, y + y_delta, z + s),
-                '034': (x - x_delta, y - y_delta, z + s),
-                '014': (x + x_delta, y - y_delta, z + s),
-            }
-            loss = 0
-            for key, lines in detections.items():
-                # Get dist from corners[key] to each line
-                for line in lines:
-                    loss += corners[key][0] + corners[key][1] + corners[key][2]
-                    # loss += tf.reduce_sum(corners[key])
-                    # loss += tf.norm(corners[key] - line[0])
-                    # d = line[1] - line[0]
-                    # d = d / np.linalg.norm(d)
-                    # v = corners[key] - line[0]
-                    # t = tf.reduce_sum(tf.multiply(v, d))
-                    # p = line[0] + t * d
-                    # loss += tf.norm(corners[key] - p)
-                    # ba = line[0] - corners[key]
-                    # bc = line[0] - line[1]
-                    # loss += tf.norm(tf.linalg.cross(ba, bc)) / tf.norm(bc)
-        # print(loss)
-        print(f'Step {step}:', loss)
-        print()
-        grads = tape.gradient(loss, [x, y, z, theta, s])
-        print('Grads:', grads)
-        print("\n\n")
-        optimizer.apply_gradients(zip(grads, [x, y, z, theta, s]))
-    # print(x, y, z, theta, s)
-    print(x)
-    print(y)
-    print(z)
-    print(theta)
-    print(s)
+            print(f'Step {step}:', loss.numpy())
+            if prev_loss - loss < early_stop_thresh:
+                print('Early stopping.')
+                break
+            prev_loss = loss
+
+            grads = tape.gradient(loss, [x, y, z, theta, s])
+            optimizer.apply_gradients(zip(grads, [x, y, z, theta, s]))
+    except KeyboardInterrupt:
+        pass
+
+    return x.numpy(), y.numpy(), z.numpy(), theta.numpy(), s.numpy()
 
 
 def main():
     detections = {}
     for i in range(0, 10):
+        # Get coordinates and descriptions of cube corners in image
         corners = corner_info_client(i)
-        # print(corners)
-        # TODO: Request world point server with this info, get world points
+
+        # Convert pixel coordinates to world-frame coordinates
         points = world_point_client(i, corners)
-        # print(points)
+
+        # Generate projection lines by taking camera center and world point
+        # Each projection line is identified by the descriptor of the corner
+        # it corresponds to
         cam = points.cam
-        # print(cam)
         cam = np.array([cam.x, cam.y, cam.z])
-        # print(cam)
         for corner, point in zip(corners.corners, points.points):
+            # Line is a tuple of (camera_position, corner_position)
+            # Store it with the appropriate key (descriptor)
             pt = np.array([point.x, point.y, point.z])
             try:
                 detections[corner.key] += [(cam, pt)]
             except KeyError:
                 detections[corner.key] = [(cam, pt)]
-            # detections[corner.key] = detections.get(corner.key, []) + [(cam, pt)]
-            # print(pt, corner.key)
-        # return
-        # print(detections)
-        # TODO: Use world point + camera pos to parameterize equation of ray
-        # TODO: Accumulate all rays corresponding to a single corner
-        #       across all images
-        # print(info.corners)
-        # print(type(info.corners[0].coords))
-        # break
-    # print(detections)
-    # return
 
-    # plt.rcParams["figure.autolayout"] = True
+    # Fit a parametric cube to the detected projection lines using TF
+    x, y, z, theta, s = fit_cube(detections)
+    print(f'Centroid coordinates: ({x}, {y}, {z})')
+    print(f'Cube side length: {s * 2}')
 
-    # print(detections)
-    # for key, lines in detections.items():
-    #     # if len(lines) <= 2: continue
-    #     # if len(lines) <= 2 or key == '034' or key == '012' or key == '014': continue
-    #     # print(key, len(lines))
-    #     # continue
-    #     fig = plt.figure()
-    #     ax = fig.add_subplot(projection="3d")
-    #
-    #     for line in lines:
-    #         x, y, z = np.array(line).T
-    #         # print(x, y, z)
-    #         ax.scatter(x, y, z, c='red', s=100)
-    #         ax.plot(x, y, z, color='red')
-    #     # break
-    # plt.show()
+    # Pass numpy as math library to prevent getting tf Variables as output
+    corner_coords = get_parameterized_corners(x, y, z, theta, s, np)
 
-    fit_cube(detections)
-    return
-    for key, lines in detections.items():
-        print(key)
-        print(np.array2string(np.array(lines), separator=','))
-
-    return
-
-    # return
+    # Plot final corner coordinates
     plt.rcParams["figure.autolayout"] = True
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
-
-    for key, lines in detections.items():
-        print(key)
-        # Can't do anything if only one line equation for corner
-        if len(lines) < 2:
-            continue
-
-        # for line in lines:
-        #     l1 = np.array(line)
-        #     x, y, z = l1.T
-        #     ax.scatter(x, y, z, c='green', s=100)
-        #     ax.plot(x, y, z, color='green')
-        cp = get_center_point(lines)
-        x, y, z = cp
+    for key, point in corner_coords.items():
+        x, y, z = point
         ax.scatter(x, y, z, c='red', s=100)
-        ax.plot(x, y, z, color='red')
 
-        """
-        acc = np.zeros(3)
-        ctr = 0
-        # Iterate over all pairs of lines
-        for i, line1 in enumerate(lines):
-            for j, line2 in enumerate(lines[i + 1:]):
-                # FIXME: Absolutely gon output
-                #  Draw these lines in 3D and see what's happening
-                # print(line1)
-                # print(line2)
-
-                unit_a = line1[0] - line1[1]
-                unit_b = line2[0] - line2[1]
-                unit_a /= np.linalg.norm(unit_a)
-                unit_b /= np.linalg.norm(unit_b)
-                unit_c = np.cross(unit_b, unit_a)
-                unit_c /= np.linalg.norm(unit_c)
-
-                rhs = line2[1] - line1[1]
-                lhs = np.array([unit_a, -unit_b, unit_c]).T
-                # print(lhs, rhs)
-                ans = np.linalg.solve(lhs, rhs)
-                acc += ans
-                ctr += 1
-        # if x ** 2 + y ** 2 + z ** 2 > 200:
-        #     continue
-        print(acc/ctr)
-        x, y, z = acc / ctr
-        ax.scatter(x, y, z, c='red', s=100)
-        ax.plot(x, y, z, color='red')
-        """
+    # Plot projection lines
+    # for key, lines in detections.items():
+    #     for line in lines:
+    #         x, y, z = np.array(line).T
+    #         ax.scatter(x, y, z, c='red', s=100)
+    #         ax.plot(x, y, z, color='red')
 
     plt.show()
-    # break
-    # TODO: For all corners with more than one line, find the point that
-    #       minimizes (sum of squared?) distances to all the lines.
-    # REVIEW: Is gradient descent viable?
-    #         Or is there a convenient closed-form?
-    # TODO: Find distances between all pairs of found corners.
-    #       Take into account the number of common faces and determine
-    #       what factor they are equal to side_length times, sqrt2, sqrt3, etc.
-    # TODO: Use information from last step, compute best estimate for s_length
-    # TODO: Also get a z-value-of-ground estimate from each viable corner,
-    #       subtracting side_length as needed from the top ones.
-    # top corners will all have red (1)
-    # corners with 2 colors common will always be along an edge,
-    # those with one common will be along a face diagonal,
-    # and those with none will be along a body diagonal (opposite)
 
 
 if __name__ == "__main__":
