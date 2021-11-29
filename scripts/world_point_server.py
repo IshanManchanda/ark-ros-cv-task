@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+import json
+import re
 from os import path
 
-import json
 import numpy as np
-import re
 import rospy
 from geometry_msgs.msg import Point
 
@@ -23,6 +23,7 @@ def read_file(file_id):
     with open(absolute_path) as f:
         data = f.read()
 
+    # REVIEW: Read in as an ROS Pose object instead of parsing with JSON?
     # Remove unnecessary chars (all chars in < >) and make a valid JSON string
     stripped = re.sub("[<].*?[>]", "", data).replace('\'', '\"')
 
@@ -34,6 +35,7 @@ def get_rotation_matrix(orientation_dict):
     """
     Convert from ROS orientation quaternion to rotation matrix
     """
+    # REVIEW: Use ROS Transform lib to convert instead?
     # Extract the values from the quaternion dict
     w, x, y, z = (orientation_dict[key + '_val'] for key in 'wxyz')
 
@@ -75,6 +77,9 @@ def get_translation_vector(position_dict, r_matrix):
 
 
 def get_extrinsics_matrix(file_id):
+    """
+    Get extrinsics/transformation matrix for a particular camera
+    """
     data_dict = read_file(file_id)
 
     # Rotation matrix from world coordinate to camera coordinate system
@@ -92,6 +97,10 @@ def get_extrinsics_matrix(file_id):
 
 
 def get_intrinsics_matrix():
+    """
+    Get intrinsics matrix for perfect pinhole camera with 90deg horizontal FoV
+    that takes an image 256 pixels wide.
+    """
     f = 128
     return np.array([
         [f, 0, 0],
@@ -101,51 +110,58 @@ def get_intrinsics_matrix():
 
 
 def world_point_handler(req):
+    """
+    Request handler for the world point service
+    """
+    print("--- Received Request ---")
+    print(req)
+    print("--- End Request ---")
+    # Get camera matrices and compute their inverses
     ext = get_extrinsics_matrix(req.file_id)
     cam = get_intrinsics_matrix()
-    cx, cy = 256 / 2, 144 / 2
-
     ext_inv = np.linalg.inv(ext)
     cam_inv = np.linalg.inv(cam)
 
-    # cent = np.array([[0, 0, 1]]).T
-    cent = np.array([[cx, cy, 0]]).T
-    c = cam @ cent
-    pc = cam_inv @ c
-    pc_h = np.vstack((pc, np.ones((1, 1))))
-    cam = ext_inv @ pc_h  # World position of origin
+    # Reverse project the optical center to get camera position in world frame
+    # This value is also directly read-in from the Pose file,
+    # this procedure is only used as a sanity check
+    cx, cy = 256 / 2, 144 / 2
+    center_cam = np.array([[cx, cy, 0, 1]]).T
+    cam = ext_inv @ center_cam
 
+    # Construct the response object and save the world position of the camera
     response = WorldPointResponse()
     response.cam = Point(*cam[:3])
     response.points = []
 
-    # cam_inv multiplication, vstack to get homogenous, and ext_inv
+    # Iterate over all corners to get their projection points
     for corner_object in req.corners:
         # Convert corner pixel coordinate to a homogenous vector
+        # Also deal with cx, cy offsets as well as y axis inversion
         corner = np.ones((3, 1))
-        corner[:2, 0] = corner_object.coords
-        corner[0, 0] = corner[0, 0] - cx
-        corner[1, 0] = cy - corner[1, 0]
+        corner[0, 0] = corner_object.coords[0] - cx
+        corner[1, 0] = cy - corner_object.coords[1]
 
         # Get position of corner pixel in camera frame
         corner_cam = cam_inv @ corner
-        print("Corner cam:", corner_cam)
 
         # Homogenize and convert to world frame
         corner_cam = np.vstack((corner_cam, np.ones((1, 1))))
         corner_world = ext_inv @ corner_cam
-        print(corner_world)
-        response.points.append(Point(*corner_world[:3]))
-        print(corner_object.key)
 
-    print(req)
+        # Add point to response object
+        response.points.append(Point(*corner_world[:3]))
+
+    print("--- Sending Response ---")
     print(response)
-    print(cam_inv)
-    print(ext_inv)
+    print("--- End Response ---\n")
     return response
 
 
 def world_point_server():
+    """
+    Start the corner info ROS Service
+    """
     rospy.init_node('world_point_server')
     s = rospy.Service('world_point', WorldPoint, world_point_handler)
     print("World Point Server serving.")

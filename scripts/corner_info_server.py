@@ -76,7 +76,6 @@ def perform_voting(hs_list):
 
 
 def get_corner_colors(img, corner):
-    # def get_corner_colors(img, corner, j):
     """
     Get a set of the colors present near the corner of the image
     """
@@ -110,6 +109,9 @@ def get_corner_colors(img, corner):
 
 
 def get_corner_info(file_id):
+    """
+    Get pixel coordinates and descriptors for corners present in the image
+    """
     # Opposite face colors
     # We use these to get the third face color for corners with only
     # two visible faces in a particular image
@@ -167,6 +169,12 @@ def get_corner_info(file_id):
 
 
 def corner_info_handler(req):
+    """
+    Request handler for the corner info service
+    """
+    print("--- Received Request ---")
+    print(req)
+    print("--- End Request ---")
     # Perform the corner coordinate + color computation for this file
     corner_info = get_corner_info(req.file_id)
 
@@ -176,11 +184,16 @@ def corner_info_handler(req):
         corner = Corner(key, val)
         response.corners += [corner]
 
+    print("--- Sending Response ---")
     print(response)
+    print("--- End Response ---\n")
     return response
 
 
 def corner_info_server():
+    """
+    Start the corner info ROS Service
+    """
     rospy.init_node('corner_info_server')
     s = rospy.Service('corner_info', CornerInfo, corner_info_handler)
     print("Corner Info Server serving.")
